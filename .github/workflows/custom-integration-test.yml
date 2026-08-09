@@ -113,7 +113,6 @@ jobs:
         run: |
           set -euo pipefail
           CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/sub2api-server" ./cmd/server
-          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/sub2api-jwtgen" ./cmd/jwtgen
 
       - name: Start backend and run migrations
         working-directory: backend
@@ -173,22 +172,31 @@ jobs:
           ADMIN_PASSWORD="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-system-prompt-strategy"
           test -n "$ADMIN_PASSWORD"
           echo "::add-mask::$ADMIN_PASSWORD"
+          admin_count="$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) FROM users WHERE email = 'ci-admin@sub2api.local';")"
+          if [[ "$admin_count" != "1" ]]; then
+            echo "::warning::AUTO_SETUP reported admin creation but the admin was not materialized; seeding an isolated CI fixture"
+          fi
+          psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -v ON_ERROR_STOP=1 -v admin_password="$ADMIN_PASSWORD" <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+          INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
+          SELECT 'ci-admin@sub2api.local', crypt(:'admin_password', gen_salt('bf')), 'admin', 0, 5, 'active', NOW(), NOW()
+          WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'ci-admin@sub2api.local');
+          UPDATE users
+          SET password_hash = crypt(:'admin_password', gen_salt('bf')), role = 'admin', status = 'active', updated_at = NOW()
+          WHERE email = 'ci-admin@sub2api.local';
+          SQL
 
           login_status="$(curl --silent --show-error --output "$work_dir/login.json" --write-out '%{http_code}' \
             --header 'Content-Type: application/json' \
             --request POST \
             --data "$(jq -cn --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" '{email:$email,password:$password}')" \
             "$base_url/auth/login")"
-          if [[ "$login_status" == "200" ]]; then
-            token="$(jq -er '.data.access_token' "$work_dir/login.json")"
-            echo "Admin password login passed"
-          else
-            echo "::warning::Admin password login returned HTTP $login_status; using the repository jwtgen helper for the isolated admin"
+          if [[ "$login_status" != "200" ]]; then
+            echo "Admin login failed with HTTP $login_status" >&2
             jq 'del(.data.access_token, .data.refresh_token)' "$work_dir/login.json" >&2 || true
-            jwt_output="$("$RUNNER_TEMP/sub2api-jwtgen" -email "$ADMIN_EMAIL")"
-            token="$(sed -n 's/^JWT=//p' <<< "$jwt_output")"
-            test -n "$token"
+            exit 1
           fi
+          token="$(jq -er '.data.access_token' "$work_dir/login.json")"
           echo "::add-mask::$token"
           auth_header="Authorization: Bearer $token"
 
