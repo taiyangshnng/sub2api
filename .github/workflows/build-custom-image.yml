@@ -1,0 +1,162 @@
+name: Build custom image
+
+on:
+  push:
+    branches:
+      - codex/build-custom-image-v0.1.172
+    paths:
+      - .github/workflows/build-custom-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  EXPECTED_COMMIT: 638042835c41b8a2286166ec56e91b66ede2cdd1
+  IMAGE: ghcr.io/taiyangshnng/sub2api-custom
+  IMAGE_TAG: custom-v0.1.172-6380428
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out exact custom source
+        uses: actions/checkout@v6
+        with:
+          ref: 638042835c41b8a2286166ec56e91b66ede2cdd1
+          fetch-depth: 1
+
+      - name: Verify exact build source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_commit="$(git rev-parse HEAD)"
+          echo "Expected build commit: $EXPECTED_COMMIT"
+          echo "Actual build commit:   $actual_commit"
+          test "$actual_commit" = "$EXPECTED_COMMIT"
+          test -f Dockerfile
+          test -f .dockerignore
+          echo "actual_commit=$actual_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate OCI metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ env.IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.title=Sub2API Custom
+            org.opencontainers.image.description=Sub2API custom system prompt strategy build
+            org.opencontainers.image.source=https://github.com/taiyangshnng/sub2api
+            org.opencontainers.image.revision=${{ env.EXPECTED_COMMIT }}
+            org.opencontainers.image.version=custom-v0.1.172-6380428
+
+      - name: Build and push linux/amd64 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            VERSION=custom-v0.1.172
+            COMMIT=${{ env.EXPECTED_COMMIT }}
+            DATE=2026-08-09T01:26:40Z
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify pushed tag and revision
+        id: verify
+        shell: bash
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test -n "$BUILD_DIGEST"
+          case "$BUILD_DIGEST" in
+            sha256:*) ;;
+            *) echo "Invalid image digest: $BUILD_DIGEST" >&2; exit 1 ;;
+          esac
+
+          tag_ref="$IMAGE:$IMAGE_TAG"
+          docker buildx imagetools inspect "$tag_ref" > "$RUNNER_TEMP/imagetools.txt"
+          tag_digest="$(awk '$1 == "Digest:" {print $2; exit}' "$RUNNER_TEMP/imagetools.txt")"
+          echo "Build digest: $BUILD_DIGEST"
+          echo "Tag digest:   $tag_digest"
+          test "$tag_digest" = "$BUILD_DIGEST"
+
+          docker pull --quiet --platform linux/amd64 "$tag_ref" >/dev/null
+          revision="$(docker image inspect "$tag_ref" \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          echo "OCI revision: $revision"
+          test "$revision" = "$EXPECTED_COMMIT"
+          echo "digest=$BUILD_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Check GHCR package visibility
+        id: visibility
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          visibility=UNKNOWN
+          api_status="$(curl --silent --show-error --output "$RUNNER_TEMP/package.json" --write-out '%{http_code}' \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            'https://api.github.com/users/taiyangshnng/packages/container/sub2api-custom')"
+          if [[ "$api_status" == "200" ]]; then
+            visibility="$(jq -r '.visibility // "UNKNOWN"' "$RUNNER_TEMP/package.json" | tr '[:lower:]' '[:upper:]')"
+          fi
+          rm -f "$RUNNER_TEMP/package.json"
+
+          anonymous_config="$RUNNER_TEMP/anonymous-docker"
+          mkdir -p "$anonymous_config"
+          if docker --config "$anonymous_config" buildx imagetools inspect "$IMAGE:$IMAGE_TAG" >/dev/null 2>&1; then
+            anonymous_pull=YES
+          else
+            anonymous_pull=NO
+          fi
+
+          echo "Package visibility: $visibility"
+          echo "Anonymous manifest access: $anonymous_pull"
+          echo "visibility=$visibility" >> "$GITHUB_OUTPUT"
+          echo "anonymous_pull=$anonymous_pull" >> "$GITHUB_OUTPUT"
+
+      - name: Publish build summary
+        shell: bash
+        run: |
+          {
+            echo '### Sub2API custom image'
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Expected commit | \`$EXPECTED_COMMIT\` |"
+            echo "| Actual commit | \`${{ steps.source.outputs.actual_commit }}\` |"
+            echo "| Image | \`$IMAGE\` |"
+            echo "| Tag | \`$IMAGE_TAG\` |"
+            echo "| Platform | \`linux/amd64\` |"
+            echo "| Digest | \`${{ steps.verify.outputs.digest }}\` |"
+            echo "| Package visibility | \`${{ steps.visibility.outputs.visibility }}\` |"
+            echo "| Anonymous pull | \`${{ steps.visibility.outputs.anonymous_pull }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
