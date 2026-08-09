@@ -1,0 +1,230 @@
+name: AUTO_SETUP baseline A/B
+
+on:
+  push:
+    branches:
+      - codex/ci-test-auto-setup-ab-v0.1.172
+    paths:
+      - .github/workflows/auto-setup-baseline-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pristine-auto-setup:
+    name: ${{ matrix.label }} pristine AUTO_SETUP
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: official-v0.1.172
+            ref: 155c494964c3ea6ecc31f52679525c1034bf0f16
+          - label: custom-6380428
+            ref: 638042835c41b8a2286166ec56e91b66ede2cdd1
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: sub2api
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sub2api -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      AUTO_SETUP: "true"
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: "5432"
+      DATABASE_USER: sub2api
+      DATABASE_PASSWORD: ""
+      DATABASE_DBNAME: sub2api_ci
+      DATABASE_SSLMODE: disable
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      SERVER_HOST: 127.0.0.1
+      SERVER_PORT: "8080"
+      SERVER_MODE: release
+      SETUP_MIGRATION_TIMEOUT_SECONDS: "300"
+      ADMIN_EMAIL: ci-admin@sub2api.local
+      TZ: UTC
+
+    steps:
+      - name: Check out exact test commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ matrix.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify exact source and runner services
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ matrix.ref }}"
+          pg_isready -h 127.0.0.1 -p 5432 -U sub2api -d postgres
+          psql -h 127.0.0.1 -p 5432 -U sub2api -d postgres -v ON_ERROR_STOP=1 -c 'SELECT version();'
+          test "$(docker exec "${{ job.services.redis.id }}" redis-cli ping)" = "PONG"
+          go version
+
+      - name: Build backend and jwtgen
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go mod download
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/sub2api-server" ./cmd/server
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/sub2api-jwtgen" ./cmd/jwtgen
+
+      - name: Start pristine backend
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          DATA_DIR="$RUNNER_TEMP/auto-setup-${{ matrix.label }}"
+          ADMIN_PASSWORD="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-auto-setup-ab"
+          JWT_SECRET="$(openssl rand -hex 32)"
+          mkdir -p "$DATA_DIR" "$RUNNER_TEMP/auto-setup-diagnostics"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          echo "::add-mask::$JWT_SECRET"
+          {
+            echo "DATA_DIR=$DATA_DIR"
+            echo "ADMIN_PASSWORD=$ADMIN_PASSWORD"
+            echo "JWT_SECRET=$JWT_SECRET"
+          } >> "$GITHUB_ENV"
+          export DATA_DIR ADMIN_PASSWORD JWT_SECRET
+          nohup "$RUNNER_TEMP/sub2api-server" > "$RUNNER_TEMP/auto-setup-diagnostics/backend.log" 2>&1 &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Probe pristine AUTO_SETUP
+        run: |
+          set -euo pipefail
+          diagnostics="$RUNNER_TEMP/auto-setup-diagnostics"
+          base_url=http://127.0.0.1:8080
+
+          backend_ready=false
+          for attempt in {1..90}; do
+            if curl --fail --silent --show-error "$base_url/health" > "$diagnostics/health.json"; then
+              backend_ready=true
+              break
+            fi
+            if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$backend_ready" != "true" ]]; then
+            echo "A/B_RESULT label=${{ matrix.label }} backend=FAIL"
+            cat "$diagnostics/backend.log" >&2
+            exit 1
+          fi
+
+          if grep -Fq "Admin user created: $ADMIN_EMAIL" "$diagnostics/backend.log"; then
+            auto_setup_log=CLAIMED_SUCCESS
+          else
+            auto_setup_log=NO_SUCCESS_CLAIM
+          fi
+
+          curl --silent --show-error "$base_url/setup/status" > "$diagnostics/setup-status.json"
+          if jq -e '.data.needs_setup == false and .data.step == "completed"' "$diagnostics/setup-status.json" >/dev/null; then
+            setup_status=COMPLETED
+          else
+            setup_status=NOT_COMPLETED
+          fi
+
+          admin_count="$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 \
+            -c "SELECT COUNT(*) FROM users WHERE email = '$ADMIN_EMAIL' AND role = 'admin';")"
+          if [[ "$admin_count" == "1" ]]; then
+            admin_row=EXISTS
+          else
+            admin_row=MISSING
+          fi
+
+          login_status="$(curl --silent --show-error --output "$diagnostics/login.json" --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' \
+            --request POST \
+            --data "$(jq -cn --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" '{email:$email,password:$password}')" \
+            "$base_url/api/v1/auth/login")"
+          login_reason=NONE
+          if [[ "$login_status" != "200" ]]; then
+            login_reason="$(jq -r '.reason // .message // "UNKNOWN"' "$diagnostics/login.json")"
+          fi
+
+          set +e
+          "$RUNNER_TEMP/sub2api-jwtgen" -email "$ADMIN_EMAIL" \
+            > "$diagnostics/jwtgen.out" 2> "$diagnostics/jwtgen.err"
+          jwtgen_exit=$?
+          set -e
+          if [[ "$jwtgen_exit" == "0" ]]; then
+            jwtgen=PASS
+          elif grep -Eqi 'not found|USER_NOT_FOUND' "$diagnostics/jwtgen.err"; then
+            jwtgen=USER_NOT_FOUND
+          else
+            jwtgen=FAIL
+          fi
+          rm -f "$diagnostics/jwtgen.out"
+
+          echo "A/B_RESULT label=${{ matrix.label }} commit=${{ matrix.ref }} backend=PASS auto_setup_log=$auto_setup_log admin_row=$admin_row admin_count=$admin_count setup_status=$setup_status login_http=$login_status login_reason=$login_reason jwtgen=$jwtgen"
+          {
+            echo "### ${{ matrix.label }}"
+            echo ""
+            echo "Commit: \`${{ matrix.ref }}\`"
+            echo ""
+            echo "| Probe | Result |"
+            echo "|---|---|"
+            echo "| Backend startup | PASS |"
+            echo "| AUTO_SETUP log | \`$auto_setup_log\` |"
+            echo "| Admin row | \`$admin_row\` (count \`$admin_count\`) |"
+            echo "| Setup status | \`$setup_status\` |"
+            echo "| Login | HTTP \`$login_status\`, \`$login_reason\` |"
+            echo "| jwtgen | \`$jwtgen\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$auto_setup_log" != "CLAIMED_SUCCESS" || "$admin_row" != "EXISTS" || "$setup_status" != "COMPLETED" || "$login_status" != "200" || "$jwtgen" != "PASS" ]]; then
+            exit 1
+          fi
+
+      - name: Capture failure diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/auto-setup-diagnostics"
+          docker logs "${{ job.services.postgres.id }}" > "$RUNNER_TEMP/auto-setup-diagnostics/postgres.log" 2>&1 || true
+          docker logs "${{ job.services.redis.id }}" > "$RUNNER_TEMP/auto-setup-diagnostics/redis.log" 2>&1 || true
+          rm -f "$RUNNER_TEMP/auto-setup-diagnostics/jwtgen.out"
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [[ -n "${BACKEND_PID:-}" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+            kill "$BACKEND_PID"
+            wait "$BACKEND_PID" 2>/dev/null || true
+          fi
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: auto-setup-${{ matrix.label }}-diagnostics
+          path: ${{ runner.temp }}/auto-setup-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
