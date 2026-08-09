@@ -1,0 +1,317 @@
+name: Custom integration test
+
+on:
+  push:
+    branches:
+      - ci-test-custom-v0.1.172
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: sub2api
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sub2api -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      AUTO_SETUP: "true"
+      DATA_DIR: ${{ runner.temp }}/sub2api-ci-data
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: "5432"
+      DATABASE_USER: sub2api
+      DATABASE_PASSWORD: ""
+      DATABASE_DBNAME: sub2api_ci
+      DATABASE_SSLMODE: disable
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      SERVER_HOST: 127.0.0.1
+      SERVER_PORT: "8080"
+      SERVER_MODE: release
+      SETUP_MIGRATION_TIMEOUT_SECONDS: "300"
+      ADMIN_EMAIL: ci-admin@sub2api.local
+      TZ: UTC
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Verify runner services
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if pg_isready -h 127.0.0.1 -p 5432 -U sub2api -d postgres >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == "30" ]]; then
+              echo "PostgreSQL did not become ready" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          psql -h 127.0.0.1 -p 5432 -U sub2api -d postgres -v ON_ERROR_STOP=1 -c 'SELECT version();'
+
+          for attempt in {1..30}; do
+            if [[ "$(redis-cli -h 127.0.0.1 -p 6379 ping 2>/dev/null)" == "PONG" ]]; then
+              break
+            fi
+            if [[ "$attempt" == "30" ]]; then
+              echo "Redis did not become ready" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          redis-cli -h 127.0.0.1 -p 6379 ping
+
+      - name: Verify Go version and download modules
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go version | grep -q 'go1.26.5'
+          go mod download
+
+      - name: Run focused backend tests
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          go test ./internal/pkg/antigravity
+          go test -tags=unit ./internal/service -run '^(TestAdminService_(CreateGroup|UpdateGroup).*|TestDuplicateGroup.*|TestAPIKeyAuthSnapshot.*)$'
+          go test -tags=unit ./internal/handler/admin -run '^Test(GroupHandlerEndpoints|DuplicateGroupHandler.*)$'
+          go test ./internal/handler/dto -run '^TestGroupFromServiceAdminIncludesProfitControl$'
+          go test ./internal/repository -run '^TestGroupEntityToService_PreservesMessagesDispatchModelConfig$'
+
+      - name: Build backend
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/sub2api-server" ./cmd/server
+
+      - name: Start backend and run migrations
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          mkdir -p "$DATA_DIR" "$RUNNER_TEMP/integration-diagnostics"
+          ADMIN_PASSWORD="$(openssl rand -hex 24)"
+          JWT_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          echo "::add-mask::$JWT_SECRET"
+          echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$GITHUB_ENV"
+          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          export ADMIN_PASSWORD JWT_SECRET
+          nohup "$RUNNER_TEMP/sub2api-server" > "$RUNNER_TEMP/integration-diagnostics/backend.log" 2>&1 &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Verify backend startup and migration 196
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8080/health > /dev/null; then
+              break
+            fi
+            if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+              echo "Backend exited before becoming healthy" >&2
+              cat "$RUNNER_TEMP/integration-diagnostics/backend.log" >&2
+              exit 1
+            fi
+            if [[ "$attempt" == "90" ]]; then
+              echo "Backend did not become healthy" >&2
+              cat "$RUNNER_TEMP/integration-diagnostics/backend.log" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          curl --fail --silent --show-error http://127.0.0.1:8080/health | jq -e '.status == "ok"'
+          curl --fail --silent --show-error http://127.0.0.1:8080/setup/status | jq -e '.data.needs_setup == false and .data.step == "completed"'
+
+          migration_count="$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c 'SELECT COUNT(*) FROM schema_migrations;')"
+          echo "Applied migration count: $migration_count"
+          test "$migration_count" -gt 0
+          test "$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) FROM schema_migrations WHERE filename = '196_add_group_system_prompt_strategy.sql';")" = "1"
+
+          schema_valid="$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c "SELECT data_type = 'text' AND is_nullable = 'NO' AND column_default LIKE '%append%' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'groups' AND column_name = 'system_prompt_strategy';")"
+          test "$schema_valid" = "t"
+          psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -v ON_ERROR_STOP=1 -c "SELECT data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'groups' AND column_name = 'system_prompt_strategy';"
+
+      - name: Verify Group strategy through admin HTTP API
+        run: |
+          set -euo pipefail
+          base_url=http://127.0.0.1:8080/api/v1
+          work_dir="$RUNNER_TEMP/api-checks"
+          mkdir -p "$work_dir"
+
+          login_status="$(curl --silent --show-error --output "$work_dir/login.json" --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' \
+            --request POST \
+            --data "$(jq -cn --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" '{email:$email,password:$password}')" \
+            "$base_url/auth/login")"
+          test "$login_status" = "200"
+          token="$(jq -er '.data.access_token' "$work_dir/login.json")"
+          echo "::add-mask::$token"
+          auth_header="Authorization: Bearer $token"
+
+          curl --fail --silent --show-error --header "$auth_header" "$base_url/admin/compliance" > "$work_dir/compliance.json"
+          jq -e '.data.required == true' "$work_dir/compliance.json"
+          ack_phrase="$(jq -er '.data.ack_phrase_en' "$work_dir/compliance.json")"
+          curl --fail --silent --show-error \
+            --header "$auth_header" \
+            --header 'Content-Type: application/json' \
+            --request POST \
+            --data "$(jq -cn --arg phrase "$ack_phrase" '{phrase:$phrase,language:"en"}')" \
+            "$base_url/admin/compliance/accept" | jq -e '.data.required == false'
+
+          create_group() {
+            local name="$1"
+            local strategy="${2:-}"
+            local output="$3"
+            local payload
+            payload="$(jq -cn --arg name "$name" '{name:$name,platform:"antigravity",rate_multiplier:1,subscription_type:"standard"}')"
+            if [[ -n "$strategy" ]]; then
+              payload="$(jq -c --arg strategy "$strategy" '. + {system_prompt_strategy:$strategy}' <<< "$payload")"
+            fi
+            curl --fail --silent --show-error \
+              --header "$auth_header" \
+              --header 'Content-Type: application/json' \
+              --request POST \
+              --data "$payload" \
+              "$base_url/admin/groups" > "$output"
+            jq -e '.code == 0 and (.data.id | type == "number")' "$output"
+          }
+
+          assert_group_strategy() {
+            local id="$1"
+            local expected="$2"
+            curl --fail --silent --show-error --header "$auth_header" "$base_url/admin/groups/$id" \
+              | jq -e --arg expected "$expected" '.data.system_prompt_strategy == $expected'
+          }
+
+          create_group 'ci-default-strategy' '' "$work_dir/default.json"
+          default_id="$(jq -er '.data.id' "$work_dir/default.json")"
+          jq -e '.data.system_prompt_strategy == "append"' "$work_dir/default.json"
+          assert_group_strategy "$default_id" append
+
+          create_group 'ci-explicit-append' append "$work_dir/explicit.json"
+          explicit_id="$(jq -er '.data.id' "$work_dir/explicit.json")"
+          assert_group_strategy "$explicit_id" append
+
+          curl --fail --silent --show-error \
+            --header "$auth_header" \
+            --header 'Content-Type: application/json' \
+            --request PUT \
+            --data '{"system_prompt_strategy":"ignore"}' \
+            "$base_url/admin/groups/$explicit_id" | jq -e '.data.system_prompt_strategy == "ignore"'
+          assert_group_strategy "$explicit_id" ignore
+
+          curl --fail --silent --show-error \
+            --header "$auth_header" \
+            --header 'Content-Type: application/json' \
+            --request PUT \
+            --data '{"system_prompt_strategy":"authoritative"}' \
+            "$base_url/admin/groups/$explicit_id" | jq -e '.data.system_prompt_strategy == "authoritative"'
+          assert_group_strategy "$explicit_id" authoritative
+
+          curl --fail --silent --show-error \
+            --header "$auth_header" \
+            --header 'Idempotency-Key: ci-duplicate-authoritative' \
+            --request POST \
+            "$base_url/admin/groups/$explicit_id/duplicate" > "$work_dir/duplicate.json"
+          jq -e '.data.system_prompt_strategy == "authoritative" and .data.status == "inactive"' "$work_dir/duplicate.json"
+          duplicate_id="$(jq -er '.data.id' "$work_dir/duplicate.json")"
+          assert_group_strategy "$duplicate_id" authoritative
+
+          invalid_payload='{"name":"ci-invalid-strategy","platform":"antigravity","rate_multiplier":1,"subscription_type":"standard","system_prompt_strategy":"invalid-value"}'
+          invalid_status="$(curl --silent --show-error --output "$work_dir/invalid.json" --write-out '%{http_code}' \
+            --header "$auth_header" \
+            --header 'Content-Type: application/json' \
+            --request POST \
+            --data "$invalid_payload" \
+            "$base_url/admin/groups")"
+          test "$invalid_status" = "400"
+          grep -q 'INVALID_SYSTEM_PROMPT_STRATEGY' "$work_dir/invalid.json"
+
+          test "$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) FROM groups WHERE system_prompt_strategy NOT IN ('append', 'ignore', 'authoritative') OR system_prompt_strategy IS NULL;")" = "0"
+          test "$(redis-cli -h 127.0.0.1 -p 6379 ping)" = "PONG"
+          echo "Group strategy API integration checks passed"
+
+      - name: Capture diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/integration-diagnostics"
+          docker logs "${{ job.services.postgres.id }}" > "$RUNNER_TEMP/integration-diagnostics/postgres.log" 2>&1 || true
+          docker logs "${{ job.services.redis.id }}" > "$RUNNER_TEMP/integration-diagnostics/redis.log" 2>&1 || true
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [[ -n "${BACKEND_PID:-}" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+            kill "$BACKEND_PID"
+            wait "$BACKEND_PID" 2>/dev/null || true
+          fi
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: custom-integration-diagnostics
+          path: ${{ runner.temp }}/integration-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: pnpm run typecheck
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm run build
