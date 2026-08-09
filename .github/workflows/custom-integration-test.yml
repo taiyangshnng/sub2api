@@ -38,7 +38,6 @@ jobs:
 
     env:
       AUTO_SETUP: "true"
-      DATA_DIR: ${{ runner.temp }}/sub2api-ci-data
       DATABASE_HOST: 127.0.0.1
       DATABASE_PORT: "5432"
       DATABASE_USER: sub2api
@@ -119,6 +118,9 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
+          DATA_DIR="$RUNNER_TEMP/sub2api-ci-data"
+          export DATA_DIR
+          echo "DATA_DIR=$DATA_DIR" >> "$GITHUB_ENV"
           mkdir -p "$DATA_DIR" "$RUNNER_TEMP/integration-diagnostics"
           ADMIN_PASSWORD="$(openssl rand -hex 24)"
           JWT_SECRET="$(openssl rand -hex 32)"
