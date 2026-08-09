@@ -99,6 +99,8 @@ type Group struct {
 	ModelRoutingEnabled bool `json:"model_routing_enabled,omitempty"`
 	// 是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）
 	McpXMLInject bool `json:"mcp_xml_inject,omitempty"`
+	// Antigravity 客户端 system prompt 的处理策略：append、ignore、authoritative
+	SystemPromptStrategy string `json:"system_prompt_strategy,omitempty"`
 	// 支持的模型系列：claude, gemini_text, gemini_image
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 	// 分组显示排序，数值越小越靠前
@@ -243,7 +245,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldSystemPromptStrategy, group.FieldDefaultMappedModel, group.FieldMaxReasoningEffort:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -524,6 +526,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field mcp_xml_inject", values[i])
 			} else if value.Valid {
 				_m.McpXMLInject = value.Bool
+			}
+		case group.FieldSystemPromptStrategy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field system_prompt_strategy", values[i])
+			} else if value.Valid {
+				_m.SystemPromptStrategy = value.String
 			}
 		case group.FieldSupportedModelScopes:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -848,6 +856,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("mcp_xml_inject=")
 	builder.WriteString(fmt.Sprintf("%v", _m.McpXMLInject))
+	builder.WriteString(", ")
+	builder.WriteString("system_prompt_strategy=")
+	builder.WriteString(_m.SystemPromptStrategy)
 	builder.WriteString(", ")
 	builder.WriteString("supported_model_scopes=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SupportedModelScopes))

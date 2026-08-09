@@ -1155,6 +1155,16 @@ export default {
         enabled: 'Enabled',
         disabled: 'Disabled'
       },
+      systemPromptStrategy: {
+        title: 'System Prompt Strategy',
+        hint: 'Controls how this Antigravity group combines client system prompts with Sub2API compatibility prompts.',
+        authoritativeHint: 'Client system prompts and tools are preserved. Sub2API identity, filtering, MCP XML, and prompt workaround injections are disabled.',
+        options: {
+          append: 'Append compatibility prompt',
+          ignore: 'Ignore client system prompt',
+          authoritative: 'Client prompt authoritative'
+        }
+      },
       claudeMaxSimulation: {
         title: 'Claude Max Usage Simulation',
         tooltip:

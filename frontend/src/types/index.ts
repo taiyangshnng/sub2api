@@ -585,6 +585,7 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  system_prompt_strategy?: 'append' | 'ignore' | 'authoritative' | string
   created_at: string
   updated_at: string
 }
@@ -602,6 +603,7 @@ export interface AdminGroup extends Group {
 
   // MCP XML 协议注入（仅 antigravity 平台使用）
   mcp_xml_inject: boolean
+  system_prompt_strategy?: 'append' | 'ignore' | 'authoritative' | string
 
   // 支持的模型系列（仅 antigravity 平台使用）
   supported_model_scopes?: string[]
@@ -779,6 +781,7 @@ export interface CreateGroupRequest {
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
+  system_prompt_strategy?: 'append' | 'ignore' | 'authoritative' | string
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean
@@ -834,6 +837,7 @@ export interface UpdateGroupRequest {
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
+  system_prompt_strategy?: 'append' | 'ignore' | 'authoritative' | string
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean

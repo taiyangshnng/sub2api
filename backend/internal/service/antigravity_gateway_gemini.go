@@ -117,8 +117,12 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		proxyURL = account.Proxy.URL()
 	}
 
-	// Antigravity 上游要求必须包含身份提示词，注入到请求中
-	injectedBody, err := injectIdentityPatchToGeminiRequest(body)
+	transformOptions := s.getClaudeTransformOptions(ctx)
+	policy := antigravity.ResolveSystemPromptPolicy(antigravity.SystemPromptStrategyAppend, transformOptions.EnableIdentityPatch, transformOptions.EnableMCPXML)
+	if transformOptions.PromptPolicy != nil {
+		policy = *transformOptions.PromptPolicy
+	}
+	injectedBody, err := antigravity.ApplyGeminiPromptPolicyWithIdentity(body, originalModel, policy, transformOptions.IdentityPatch)
 	if err != nil {
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid request body")
 	}

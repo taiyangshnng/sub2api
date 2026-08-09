@@ -573,6 +573,20 @@ func (_c *GroupCreate) SetNillableMcpXMLInject(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetSystemPromptStrategy sets the "system_prompt_strategy" field.
+func (_c *GroupCreate) SetSystemPromptStrategy(v string) *GroupCreate {
+	_c.mutation.SetSystemPromptStrategy(v)
+	return _c
+}
+
+// SetNillableSystemPromptStrategy sets the "system_prompt_strategy" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSystemPromptStrategy(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetSystemPromptStrategy(*v)
+	}
+	return _c
+}
+
 // SetSupportedModelScopes sets the "supported_model_scopes" field.
 func (_c *GroupCreate) SetSupportedModelScopes(v []string) *GroupCreate {
 	_c.mutation.SetSupportedModelScopes(v)
@@ -992,6 +1006,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultMcpXMLInject
 		_c.mutation.SetMcpXMLInject(v)
 	}
+	if _, ok := _c.mutation.SystemPromptStrategy(); !ok {
+		v := group.DefaultSystemPromptStrategy
+		_c.mutation.SetSystemPromptStrategy(v)
+	}
 	if _, ok := _c.mutation.SupportedModelScopes(); !ok {
 		v := group.DefaultSupportedModelScopes
 		_c.mutation.SetSupportedModelScopes(v)
@@ -1163,6 +1181,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.McpXMLInject(); !ok {
 		return &ValidationError{Name: "mcp_xml_inject", err: errors.New(`ent: missing required field "Group.mcp_xml_inject"`)}
+	}
+	if _, ok := _c.mutation.SystemPromptStrategy(); !ok {
+		return &ValidationError{Name: "system_prompt_strategy", err: errors.New(`ent: missing required field "Group.system_prompt_strategy"`)}
+	}
+	if v, ok := _c.mutation.SystemPromptStrategy(); ok {
+		if err := group.SystemPromptStrategyValidator(v); err != nil {
+			return &ValidationError{Name: "system_prompt_strategy", err: fmt.Errorf(`ent: validator failed for field "Group.system_prompt_strategy": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.SupportedModelScopes(); !ok {
 		return &ValidationError{Name: "supported_model_scopes", err: errors.New(`ent: missing required field "Group.supported_model_scopes"`)}
@@ -1405,6 +1431,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.McpXMLInject(); ok {
 		_spec.SetField(group.FieldMcpXMLInject, field.TypeBool, value)
 		_node.McpXMLInject = value
+	}
+	if value, ok := _c.mutation.SystemPromptStrategy(); ok {
+		_spec.SetField(group.FieldSystemPromptStrategy, field.TypeString, value)
+		_node.SystemPromptStrategy = value
 	}
 	if value, ok := _c.mutation.SupportedModelScopes(); ok {
 		_spec.SetField(group.FieldSupportedModelScopes, field.TypeJSON, value)
@@ -2279,6 +2309,18 @@ func (u *GroupUpsert) SetMcpXMLInject(v bool) *GroupUpsert {
 // UpdateMcpXMLInject sets the "mcp_xml_inject" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateMcpXMLInject() *GroupUpsert {
 	u.SetExcluded(group.FieldMcpXMLInject)
+	return u
+}
+
+// SetSystemPromptStrategy sets the "system_prompt_strategy" field.
+func (u *GroupUpsert) SetSystemPromptStrategy(v string) *GroupUpsert {
+	u.Set(group.FieldSystemPromptStrategy, v)
+	return u
+}
+
+// UpdateSystemPromptStrategy sets the "system_prompt_strategy" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSystemPromptStrategy() *GroupUpsert {
+	u.SetExcluded(group.FieldSystemPromptStrategy)
 	return u
 }
 
@@ -3301,6 +3343,20 @@ func (u *GroupUpsertOne) SetMcpXMLInject(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateMcpXMLInject() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMcpXMLInject()
+	})
+}
+
+// SetSystemPromptStrategy sets the "system_prompt_strategy" field.
+func (u *GroupUpsertOne) SetSystemPromptStrategy(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPromptStrategy(v)
+	})
+}
+
+// UpdateSystemPromptStrategy sets the "system_prompt_strategy" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSystemPromptStrategy() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPromptStrategy()
 	})
 }
 
@@ -4523,6 +4579,20 @@ func (u *GroupUpsertBulk) SetMcpXMLInject(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateMcpXMLInject() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMcpXMLInject()
+	})
+}
+
+// SetSystemPromptStrategy sets the "system_prompt_strategy" field.
+func (u *GroupUpsertBulk) SetSystemPromptStrategy(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSystemPromptStrategy(v)
+	})
+}
+
+// UpdateSystemPromptStrategy sets the "system_prompt_strategy" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSystemPromptStrategy() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSystemPromptStrategy()
 	})
 }
 

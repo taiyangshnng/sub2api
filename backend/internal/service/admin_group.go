@@ -301,6 +301,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
+	systemPromptStrategy, err := antigravity.NormalizeSystemPromptStrategy(input.SystemPromptStrategy)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_SYSTEM_PROMPT_STRATEGY", "%v", err)
+	}
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -482,6 +486,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
+		SystemPromptStrategy:            string(systemPromptStrategy),
 		SupportedModelScopes:            input.SupportedModelScopes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
 		AllowLive:                       input.AllowLive,
@@ -634,6 +639,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.Platform != "" {
 		group.Platform = input.Platform
+	}
+	if input.SystemPromptStrategy != nil {
+		systemPromptStrategy, normalizeErr := antigravity.NormalizeSystemPromptStrategy(*input.SystemPromptStrategy)
+		if normalizeErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_SYSTEM_PROMPT_STRATEGY", "%v", normalizeErr)
+		}
+		group.SystemPromptStrategy = string(systemPromptStrategy)
+	} else if group.SystemPromptStrategy == "" {
+		group.SystemPromptStrategy = string(antigravity.SystemPromptStrategyAppend)
 	}
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier <= 0 {

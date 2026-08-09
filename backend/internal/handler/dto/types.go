@@ -167,7 +167,8 @@ type AdminGroup struct {
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
 
 	// MCP XML 协议注入（仅 antigravity 平台使用）
-	MCPXMLInject bool `json:"mcp_xml_inject"`
+	MCPXMLInject         bool   `json:"mcp_xml_inject"`
+	SystemPromptStrategy string `json:"system_prompt_strategy"`
 
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	DefaultMappedModel          string                                   `json:"default_mapped_model"`

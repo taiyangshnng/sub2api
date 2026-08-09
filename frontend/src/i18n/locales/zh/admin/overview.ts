@@ -1162,6 +1162,16 @@ export default {
         enabled: '已启用',
         disabled: '已禁用'
       },
+      systemPromptStrategy: {
+        title: '系统提示词策略',
+        hint: '控制此 Antigravity 分组如何处理客户端系统提示词与 Sub2API 兼容提示词。',
+        authoritativeHint: '保留客户端系统提示词和工具；禁用 Sub2API 身份、过滤、MCP XML 及其他提示词兼容注入。',
+        options: {
+          append: '追加兼容提示词',
+          ignore: '忽略客户端系统提示词',
+          authoritative: '客户端提示词优先'
+        }
+      },
       supportedScopes: {
         title: '支持的模型系列',
         tooltip: '选择此分组支持的模型系列。未勾选的系列将不会被路由到此分组。',

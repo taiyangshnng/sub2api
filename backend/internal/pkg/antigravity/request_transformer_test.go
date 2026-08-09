@@ -565,3 +565,81 @@ func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions
 	require.Equal(t, "get_weather", req.Request.Tools[0].FunctionDeclarations[0].Name)
 	require.NotNil(t, req.Request.Tools[1].GoogleSearch)
 }
+
+func TestTransformClaudeToGeminiWithOptions_SystemPromptStrategies(t *testing.T) {
+	transform := func(t *testing.T, policy SystemPromptPolicy) V1InternalRequest {
+		t.Helper()
+		claudeReq := &ClaudeRequest{
+			Model:  "claude-opus-4-5",
+			System: json.RawMessage("\"top-level client system\""),
+			Messages: []ClaudeMessage{
+				{Role: "system", Content: json.RawMessage("\"message client system\"")},
+				{Role: "user", Content: json.RawMessage("\"hello\"")},
+				{Role: "assistant", Content: json.RawMessage("[{\"type\":\"tool_use\",\"id\":\"call-1\",\"name\":\"mcp__read\",\"input\":{\"path\":\"README.md\"},\"signature\":\"sig-1\"}]")},
+				{Role: "user", Content: json.RawMessage("[{\"type\":\"tool_result\",\"tool_use_id\":\"call-1\",\"content\":\"file contents\"}]")},
+			},
+			Tools: []ClaudeTool{{
+				Type: "custom", Name: "mcp__read",
+				Custom: &ClaudeCustomToolSpec{Description: "Read a file", InputSchema: map[string]any{"type": "object"}},
+			}},
+		}
+		opts := DefaultTransformOptions()
+		opts.PromptPolicy = &policy
+		body, err := TransformClaudeToGeminiWithOptions(claudeReq, "project-1", "claude-opus-4-5", opts)
+		require.NoError(t, err)
+		var req V1InternalRequest
+		require.NoError(t, json.Unmarshal(body, &req))
+		return req
+	}
+
+	systemText := func(req V1InternalRequest) string {
+		if req.Request.SystemInstruction == nil {
+			return ""
+		}
+		var texts []string
+		for _, part := range req.Request.SystemInstruction.Parts {
+			texts = append(texts, part.Text)
+		}
+		return strings.Join(texts, "\n")
+	}
+
+	assertClientConversation := func(t *testing.T, req V1InternalRequest) {
+		t.Helper()
+		require.Len(t, req.Request.Contents, 3)
+		require.Equal(t, "mcp__read", req.Request.Contents[1].Parts[0].FunctionCall.Name)
+		require.Equal(t, "mcp__read", req.Request.Contents[2].Parts[0].FunctionResponse.Name)
+		require.Len(t, req.Request.Tools, 1)
+		require.Equal(t, "mcp__read", req.Request.Tools[0].FunctionDeclarations[0].Name)
+	}
+
+	t.Run("append preserves client system and adds compatibility prompts", func(t *testing.T) {
+		req := transform(t, ResolveSystemPromptPolicy(SystemPromptStrategyAppend, true, true))
+		text := systemText(req)
+		require.Contains(t, text, "top-level client system")
+		require.Contains(t, text, "message client system")
+		require.Contains(t, text, "You are Antigravity")
+		require.Contains(t, text, "MCP XML")
+		require.Contains(t, text, "[SYSTEM_PROMPT_END]")
+		assertClientConversation(t, req)
+	})
+
+	t.Run("ignore removes only client system", func(t *testing.T) {
+		req := transform(t, ResolveSystemPromptPolicy(SystemPromptStrategyIgnore, true, false))
+		text := systemText(req)
+		require.NotContains(t, text, "top-level client system")
+		require.NotContains(t, text, "message client system")
+		require.Contains(t, text, "You are Antigravity")
+		assertClientConversation(t, req)
+	})
+
+	t.Run("authoritative preserves client system and disables compatibility prompts", func(t *testing.T) {
+		req := transform(t, ResolveSystemPromptPolicy(SystemPromptStrategyAuthoritative, true, true))
+		text := systemText(req)
+		require.Contains(t, text, "top-level client system")
+		require.Contains(t, text, "message client system")
+		for _, unwanted := range []string{"You are Antigravity", "MCP XML", "[SYSTEM_PROMPT_END]", "ModelId is"} {
+			require.NotContains(t, text, unwanted)
+		}
+		assertClientConversation(t, req)
+	})
+}

@@ -977,6 +977,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		ModelRouting:                    g.ModelRouting,
 		ModelRoutingEnabled:             g.ModelRoutingEnabled,
 		MCPXMLInject:                    g.McpXMLInject,
+		SystemPromptStrategy:            g.SystemPromptStrategy,
 		SupportedModelScopes:            g.SupportedModelScopes,
 		SortOrder:                       g.SortOrder,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,

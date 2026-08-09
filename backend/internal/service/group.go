@@ -74,6 +74,10 @@ type Group struct {
 	// MCP XML 协议注入开关（仅 antigravity 平台使用）
 	MCPXMLInject bool
 
+	// SystemPromptStrategy controls client system prompt ownership for Antigravity groups.
+	// Empty values are treated as the legacy append behavior at the service boundary.
+	SystemPromptStrategy string
+
 	// 支持的模型系列（仅 antigravity 平台使用）
 	// 可选值: claude, gemini_text, gemini_image
 	SupportedModelScopes []string

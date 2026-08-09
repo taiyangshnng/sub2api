@@ -1333,6 +1333,19 @@
           </div>
         </div>
 
+       <!-- Claude Code 客户端限制（仅 anthropic 平台） -->
+        <div v-if="createForm.platform === 'antigravity'" class="border-t pt-4">
+          <label class="input-label">{{ t("admin.groups.systemPromptStrategy.title") }}</label>
+          <Select
+            v-model="createForm.system_prompt_strategy"
+            :options="systemPromptStrategyOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.systemPromptStrategy.hint") }}</p>
+          <p v-if="createForm.system_prompt_strategy === 'authoritative'" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            {{ t("admin.groups.systemPromptStrategy.authoritativeHint") }}
+          </p>
+        </div>
+
         <!-- Claude Code 客户端限制（仅 anthropic 平台） -->
         <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2939,6 +2952,18 @@
         </div>
 
         <!-- Claude Code 客户端限制（仅 anthropic 平台） -->
+        <div v-if="editForm.platform === 'antigravity'" class="border-t pt-4">
+          <label class="input-label">{{ t("admin.groups.systemPromptStrategy.title") }}</label>
+          <Select
+            v-model="editForm.system_prompt_strategy"
+            :options="systemPromptStrategyOptions"
+          />
+          <p class="input-hint">{{ t("admin.groups.systemPromptStrategy.hint") }}</p>
+          <p v-if="editForm.system_prompt_strategy === 'authoritative'" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            {{ t("admin.groups.systemPromptStrategy.authoritativeHint") }}
+          </p>
+        </div>
+
         <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4417,6 +4442,21 @@ const platformFilterOptions = computed(() => [
   { value: "composite", label: "Composite" },
 ]);
 
+const systemPromptStrategyOptions = computed(() => [
+  {
+    value: "append",
+    label: t("admin.groups.systemPromptStrategy.options.append"),
+  },
+  {
+    value: "ignore",
+    label: t("admin.groups.systemPromptStrategy.options.ignore"),
+  },
+  {
+    value: "authoritative",
+    label: t("admin.groups.systemPromptStrategy.options.authoritative"),
+  },
+]);
+
 const compositeRoutePlatformOptions = computed(() => [
   { value: "anthropic", label: "Anthropic" },
   { value: "openai", label: "OpenAI" },
@@ -4750,6 +4790,7 @@ const createForm = reactive({
   supported_model_scopes: ["claude", "gemini_text", "gemini_image"] as string[],
   // MCP XML 协议注入开关（仅 antigravity 平台）
   mcp_xml_inject: true,
+  system_prompt_strategy: "append" as "append" | "ignore" | "authoritative",
   // 从分组复制账号
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
@@ -5105,6 +5146,7 @@ const editForm = reactive({
   supported_model_scopes: ["claude", "gemini_text", "gemini_image"] as string[],
   // MCP XML 协议注入开关（仅 antigravity 平台）
   mcp_xml_inject: true,
+  system_prompt_strategy: "append" as "append" | "ignore" | "authoritative",
   // 从分组复制账号
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
@@ -5540,6 +5582,7 @@ const closeCreateModal = () => {
   createForm.require_privacy_set = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
+  createForm.system_prompt_strategy = "append";
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
   createForm.max_reasoning_effort = "";
@@ -5771,6 +5814,11 @@ const handleEdit = async (group: AdminGroup) => {
     "gemini_image",
   ];
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
+  editForm.system_prompt_strategy =
+    group.system_prompt_strategy === "ignore" ||
+    group.system_prompt_strategy === "authoritative"
+      ? group.system_prompt_strategy
+      : "append";
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
   editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
@@ -5815,6 +5863,7 @@ const closeEditModal = () => {
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
   editForm.web_search_price_per_call = null;
+  editForm.system_prompt_strategy = "append";
   resetMessagesDispatchFormState(editForm);
   editForm.allow_live = false;
   resetModelsListState(editModelsListState);

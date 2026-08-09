@@ -265,7 +265,12 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
-		body, err = injectIdentityPatchToGeminiRequest(body)
+		options := s.getClaudeTransformOptions(ctx)
+		policy := antigravity.ResolveSystemPromptPolicy(antigravity.SystemPromptStrategyAppend, options.EnableIdentityPatch, options.EnableMCPXML)
+		if options.PromptPolicy != nil {
+			policy = *options.PromptPolicy
+		}
+		body, err = antigravity.ApplyGeminiPromptPolicyWithIdentity(body, mappedModel, policy, options.IdentityPatch)
 		if err != nil {
 			return nil, err
 		}
@@ -276,7 +281,6 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 	}
 
 	options := s.getClaudeTransformOptions(ctx)
-	options.EnableIdentityPatch = true
 	return antigravity.TransformClaudeToGeminiWithOptions(claudeRequest, projectID, mappedModel, options)
 }
 

@@ -183,6 +183,12 @@ func (Group) Fields() []ent.Field {
 			Default(true).
 			Comment("是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）"),
 
+		// Antigravity system prompt ownership strategy (added by migration 196).
+		field.String("system_prompt_strategy").
+			MaxLen(20).
+			Default("append").
+			Comment("Antigravity 客户端 system prompt 的处理策略：append、ignore、authoritative"),
+
 		// 支持的模型系列 (added by migration 046)
 		field.JSON("supported_model_scopes", []string{}).
 			Default([]string{"claude", "gemini_text", "gemini_image"}).

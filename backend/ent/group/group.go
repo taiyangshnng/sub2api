@@ -96,6 +96,8 @@ const (
 	FieldModelRoutingEnabled = "model_routing_enabled"
 	// FieldMcpXMLInject holds the string denoting the mcp_xml_inject field in the database.
 	FieldMcpXMLInject = "mcp_xml_inject"
+	// FieldSystemPromptStrategy holds the string denoting the system_prompt_strategy field in the database.
+	FieldSystemPromptStrategy = "system_prompt_strategy"
 	// FieldSupportedModelScopes holds the string denoting the supported_model_scopes field in the database.
 	FieldSupportedModelScopes = "supported_model_scopes"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
@@ -241,6 +243,7 @@ var Columns = []string{
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
 	FieldMcpXMLInject,
+	FieldSystemPromptStrategy,
 	FieldSupportedModelScopes,
 	FieldSortOrder,
 	FieldAllowMessagesDispatch,
@@ -347,6 +350,10 @@ var (
 	DefaultModelRoutingEnabled bool
 	// DefaultMcpXMLInject holds the default value on creation for the "mcp_xml_inject" field.
 	DefaultMcpXMLInject bool
+	// DefaultSystemPromptStrategy holds the default value on creation for the "system_prompt_strategy" field.
+	DefaultSystemPromptStrategy string
+	// SystemPromptStrategyValidator is a validator for the "system_prompt_strategy" field. It is called by the builders before save.
+	SystemPromptStrategyValidator func(string) error
 	// DefaultSupportedModelScopes holds the default value on creation for the "supported_model_scopes" field.
 	DefaultSupportedModelScopes []string
 	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
@@ -584,6 +591,11 @@ func ByModelRoutingEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByMcpXMLInject orders the results by the mcp_xml_inject field.
 func ByMcpXMLInject(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMcpXMLInject, opts...).ToFunc()
+}
+
+// BySystemPromptStrategy orders the results by the system_prompt_strategy field.
+func BySystemPromptStrategy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSystemPromptStrategy, opts...).ToFunc()
 }
 
 // BySortOrder orders the results by the sort_order field.

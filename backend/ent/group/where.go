@@ -250,6 +250,11 @@ func McpXMLInject(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMcpXMLInject, v))
 }
 
+// SystemPromptStrategy applies equality check predicate on the "system_prompt_strategy" field. It's identical to SystemPromptStrategyEQ.
+func SystemPromptStrategy(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSystemPromptStrategy, v))
+}
+
 // SortOrder applies equality check predicate on the "sort_order" field. It's identical to SortOrderEQ.
 func SortOrder(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldSortOrder, v))
@@ -1953,6 +1958,71 @@ func McpXMLInjectEQ(v bool) predicate.Group {
 // McpXMLInjectNEQ applies the NEQ predicate on the "mcp_xml_inject" field.
 func McpXMLInjectNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldMcpXMLInject, v))
+}
+
+// SystemPromptStrategyEQ applies the EQ predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyNEQ applies the NEQ predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyIn applies the In predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSystemPromptStrategy, vs...))
+}
+
+// SystemPromptStrategyNotIn applies the NotIn predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSystemPromptStrategy, vs...))
+}
+
+// SystemPromptStrategyGT applies the GT predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyGTE applies the GTE predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyLT applies the LT predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyLTE applies the LTE predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyContains applies the Contains predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyHasPrefix applies the HasPrefix predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyHasSuffix applies the HasSuffix predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyEqualFold applies the EqualFold predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldSystemPromptStrategy, v))
+}
+
+// SystemPromptStrategyContainsFold applies the ContainsFold predicate on the "system_prompt_strategy" field.
+func SystemPromptStrategyContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldSystemPromptStrategy, v))
 }
 
 // SortOrderEQ applies the EQ predicate on the "sort_order" field.

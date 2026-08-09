@@ -21906,6 +21906,7 @@ type GroupMutation struct {
 	model_routing                           *map[string][]int64
 	model_routing_enabled                   *bool
 	mcp_xml_inject                          *bool
+	system_prompt_strategy                  *string
 	supported_model_scopes                  *[]string
 	appendsupported_model_scopes            []string
 	sort_order                              *int
@@ -24089,6 +24090,42 @@ func (m *GroupMutation) ResetMcpXMLInject() {
 	m.mcp_xml_inject = nil
 }
 
+// SetSystemPromptStrategy sets the "system_prompt_strategy" field.
+func (m *GroupMutation) SetSystemPromptStrategy(s string) {
+	m.system_prompt_strategy = &s
+}
+
+// SystemPromptStrategy returns the value of the "system_prompt_strategy" field in the mutation.
+func (m *GroupMutation) SystemPromptStrategy() (r string, exists bool) {
+	v := m.system_prompt_strategy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSystemPromptStrategy returns the old "system_prompt_strategy" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSystemPromptStrategy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSystemPromptStrategy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSystemPromptStrategy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSystemPromptStrategy: %w", err)
+	}
+	return oldValue.SystemPromptStrategy, nil
+}
+
+// ResetSystemPromptStrategy resets all changes to the "system_prompt_strategy" field.
+func (m *GroupMutation) ResetSystemPromptStrategy() {
+	m.system_prompt_strategy = nil
+}
+
 // SetSupportedModelScopes sets the "supported_model_scopes" field.
 func (m *GroupMutation) SetSupportedModelScopes(s []string) {
 	m.supported_model_scopes = &s
@@ -25097,7 +25134,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 55)
+	fields := make([]string, 0, 56)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25217,6 +25254,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.mcp_xml_inject != nil {
 		fields = append(fields, group.FieldMcpXMLInject)
+	}
+	if m.system_prompt_strategy != nil {
+		fields = append(fields, group.FieldSystemPromptStrategy)
 	}
 	if m.supported_model_scopes != nil {
 		fields = append(fields, group.FieldSupportedModelScopes)
@@ -25351,6 +25391,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelRoutingEnabled()
 	case group.FieldMcpXMLInject:
 		return m.McpXMLInject()
+	case group.FieldSystemPromptStrategy:
+		return m.SystemPromptStrategy()
 	case group.FieldSupportedModelScopes:
 		return m.SupportedModelScopes()
 	case group.FieldSortOrder:
@@ -25470,6 +25512,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelRoutingEnabled(ctx)
 	case group.FieldMcpXMLInject:
 		return m.OldMcpXMLInject(ctx)
+	case group.FieldSystemPromptStrategy:
+		return m.OldSystemPromptStrategy(ctx)
 	case group.FieldSupportedModelScopes:
 		return m.OldSupportedModelScopes(ctx)
 	case group.FieldSortOrder:
@@ -25788,6 +25832,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMcpXMLInject(v)
+		return nil
+	case group.FieldSystemPromptStrategy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSystemPromptStrategy(v)
 		return nil
 	case group.FieldSupportedModelScopes:
 		v, ok := value.([]string)
@@ -26440,6 +26491,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldMcpXMLInject:
 		m.ResetMcpXMLInject()
+		return nil
+	case group.FieldSystemPromptStrategy:
+		m.ResetSystemPromptStrategy()
 		return nil
 	case group.FieldSupportedModelScopes:
 		m.ResetSupportedModelScopes()
