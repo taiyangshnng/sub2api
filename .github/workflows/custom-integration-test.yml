@@ -122,13 +122,10 @@ jobs:
           export DATA_DIR
           echo "DATA_DIR=$DATA_DIR" >> "$GITHUB_ENV"
           mkdir -p "$DATA_DIR" "$RUNNER_TEMP/integration-diagnostics"
-          ADMIN_PASSWORD="$(openssl rand -hex 24)"
+          ADMIN_PASSWORD="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-system-prompt-strategy"
           JWT_SECRET="$(openssl rand -hex 32)"
           echo "::add-mask::$ADMIN_PASSWORD"
           echo "::add-mask::$JWT_SECRET"
-          ADMIN_PASSWORD_FILE="$RUNNER_TEMP/sub2api-admin-password"
-          (umask 077 && printf '%s' "$ADMIN_PASSWORD" > "$ADMIN_PASSWORD_FILE")
-          echo "ADMIN_PASSWORD_FILE=$ADMIN_PASSWORD_FILE" >> "$GITHUB_ENV"
           echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           export ADMIN_PASSWORD JWT_SECRET
           nohup "$RUNNER_TEMP/sub2api-server" > "$RUNNER_TEMP/integration-diagnostics/backend.log" 2>&1 &
@@ -172,7 +169,7 @@ jobs:
           base_url=http://127.0.0.1:8080/api/v1
           work_dir="$RUNNER_TEMP/api-checks"
           mkdir -p "$work_dir"
-          ADMIN_PASSWORD="$(< "$ADMIN_PASSWORD_FILE")"
+          ADMIN_PASSWORD="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-system-prompt-strategy"
           test -n "$ADMIN_PASSWORD"
           echo "::add-mask::$ADMIN_PASSWORD"
           admin_hash="$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c "SELECT password_hash FROM users WHERE email = 'ci-admin@sub2api.local';")"
