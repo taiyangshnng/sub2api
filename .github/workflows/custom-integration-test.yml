@@ -80,7 +80,7 @@ jobs:
           psql -h 127.0.0.1 -p 5432 -U sub2api -d postgres -v ON_ERROR_STOP=1 -c 'SELECT version();'
 
           for attempt in {1..30}; do
-            if [[ "$(redis-cli -h 127.0.0.1 -p 6379 ping 2>/dev/null)" == "PONG" ]]; then
+            if [[ "$(docker exec "${{ job.services.redis.id }}" redis-cli ping 2>/dev/null)" == "PONG" ]]; then
               break
             fi
             if [[ "$attempt" == "30" ]]; then
@@ -89,7 +89,7 @@ jobs:
             fi
             sleep 2
           done
-          redis-cli -h 127.0.0.1 -p 6379 ping
+          docker exec "${{ job.services.redis.id }}" redis-cli ping
 
       - name: Verify Go version and download modules
         working-directory: backend
@@ -261,7 +261,7 @@ jobs:
           grep -q 'INVALID_SYSTEM_PROMPT_STRATEGY' "$work_dir/invalid.json"
 
           test "$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) FROM groups WHERE system_prompt_strategy NOT IN ('append', 'ignore', 'authoritative') OR system_prompt_strategy IS NULL;")" = "0"
-          test "$(redis-cli -h 127.0.0.1 -p 6379 ping)" = "PONG"
+          test "$(docker exec "${{ job.services.redis.id }}" redis-cli ping)" = "PONG"
           echo "Group strategy API integration checks passed"
 
       - name: Capture diagnostics
