@@ -126,7 +126,9 @@ jobs:
           JWT_SECRET="$(openssl rand -hex 32)"
           echo "::add-mask::$ADMIN_PASSWORD"
           echo "::add-mask::$JWT_SECRET"
-          echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$GITHUB_ENV"
+          ADMIN_PASSWORD_FILE="$RUNNER_TEMP/sub2api-admin-password"
+          (umask 077 && printf '%s' "$ADMIN_PASSWORD" > "$ADMIN_PASSWORD_FILE")
+          echo "ADMIN_PASSWORD_FILE=$ADMIN_PASSWORD_FILE" >> "$GITHUB_ENV"
           echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           export ADMIN_PASSWORD JWT_SECRET
           nohup "$RUNNER_TEMP/sub2api-server" > "$RUNNER_TEMP/integration-diagnostics/backend.log" 2>&1 &
@@ -170,13 +172,43 @@ jobs:
           base_url=http://127.0.0.1:8080/api/v1
           work_dir="$RUNNER_TEMP/api-checks"
           mkdir -p "$work_dir"
+          ADMIN_PASSWORD="$(< "$ADMIN_PASSWORD_FILE")"
+          test -n "$ADMIN_PASSWORD"
+          echo "::add-mask::$ADMIN_PASSWORD"
+          admin_hash="$(psql -h 127.0.0.1 -p 5432 -U sub2api -d sub2api_ci -At -v ON_ERROR_STOP=1 -c "SELECT password_hash FROM users WHERE email = 'ci-admin@sub2api.local';")"
+          test -n "$admin_hash"
+          cat > "$RUNNER_TEMP/verify_admin_password.go" <<'EOF'
+          package main
+
+          import (
+            "os"
+
+            "golang.org/x/crypto/bcrypt"
+          )
+
+          func main() {
+            if bcrypt.CompareHashAndPassword([]byte(os.Getenv("ADMIN_PASSWORD_HASH")), []byte(os.Getenv("ADMIN_PASSWORD"))) != nil {
+              os.Exit(1)
+            }
+          }
+          EOF
+          if ! (cd backend && ADMIN_PASSWORD="$ADMIN_PASSWORD" ADMIN_PASSWORD_HASH="$admin_hash" go run "$RUNNER_TEMP/verify_admin_password.go"); then
+            echo "Admin password does not match the auto-setup database hash" >&2
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/verify_admin_password.go"
+          echo "Admin bcrypt credential verification passed"
 
           login_status="$(curl --silent --show-error --output "$work_dir/login.json" --write-out '%{http_code}' \
             --header 'Content-Type: application/json' \
             --request POST \
             --data "$(jq -cn --arg email "$ADMIN_EMAIL" --arg password "$ADMIN_PASSWORD" '{email:$email,password:$password}')" \
             "$base_url/auth/login")"
-          test "$login_status" = "200"
+          if [[ "$login_status" != "200" ]]; then
+            echo "Admin login failed with HTTP $login_status" >&2
+            jq 'del(.data.access_token, .data.refresh_token)' "$work_dir/login.json" >&2 || true
+            exit 1
+          fi
           token="$(jq -er '.data.access_token' "$work_dir/login.json")"
           echo "::add-mask::$token"
           auth_header="Authorization: Bearer $token"
